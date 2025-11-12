@@ -1,0 +1,50 @@
+#include <Adafruit_NeoPixel.h> 
+
+Adafruit_NeoPixel LED_RGB(1, 48, NEO_GRBW + NEO_KHZ800); 
+
+int LED_PIN = 2; 
+
+const int duracionCorta = 200; 
+const int duracionPausa = 100; 
+
+int secuenciaBLINK[] = {1, 1, 1, 1, 1, 1, 1, 0}; 
+const int longitudSecuenciaBLINK = sizeof(secuenciaBLINK) / sizeof(secuenciaBLINK[0]);
+
+void colorearRGB(int red, int green, int blue) {
+  LED_RGB.setPixelColor(0, (uint32_t(LED_RGB.Color(red, green, blue))));
+  LED_RGB.show();
+}
+
+void pulsoBloqueanteRandom() {
+  int r = random(0, 256);
+  int g = random(0, 256);
+  int b = random(0, 256);
+  
+  digitalWrite(LED_PIN, HIGH);
+  colorearRGB(r, g, b); 
+  delay(duracionCorta);
+  
+  digitalWrite(LED_PIN, LOW);
+  colorearRGB(0, 0, 0); 
+  delay(duracionPausa); 
+}
+
+void setup() {
+  LED_RGB.begin();
+  LED_RGB.setBrightness(150);
+  colorearRGB(0,0,0);
+  randomSeed(analogRead(0)); 
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+}
+
+void loop() {
+  for (int i = 0; i < longitudSecuenciaBLINK; i++) {
+    if (secuenciaBLINK[i] == 0) {
+      delay(2000); 
+      break; 
+    }
+    
+    pulsoBloqueanteRandom();
+  }
+}
