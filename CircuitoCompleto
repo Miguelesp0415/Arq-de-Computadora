@@ -1,0 +1,269 @@
+#include <Adafruit_NeoPixel.h> 
+
+Adafruit_NeoPixel LED_RGB(1, 48, NEO_GRBW + NEO_KHZ800); 
+
+int LED_PIN = 2;        
+int BTN_SOS_PIN = 4;    
+int BTN_BLINK_PIN = 5;  
+int BTN_PULSO_PIN = 6;  
+int BTN_PAUSE_PIN = 7;  
+
+volatile int efectoActual = 0; 
+volatile int nuevaInterrupcion = 0; 
+
+unsigned long tiempoPrevioBoton = 0;
+const long retardoDebounce = 200; 
+unsigned long tiempoUltimoCambio = 0;
+volatile int estadoLuz = 0; 
+volatile int pasoActual = 0; 
+volatile bool estaPausado = false; 
+
+volatile int efectoPrevio = 0;
+volatile int pasoPrevio = 0;
+volatile int estadoLuzPrevia = 0;
+volatile bool interrupcionOcurrida = false; 
+
+int secuenciaSOS[][4] = { 
+  {1, 255, 0, 0}, {1, 255, 0, 0}, {1, 255, 0, 0}, 
+  {2, 0, 0, 255}, {2, 0, 0, 255}, {2, 0, 0, 255}, 
+  {1, 255, 0, 0}, {1, 255, 0, 0}, {1, 255, 0, 0}, 
+  {0, 0, 0, 0} 
+};
+const int longitudSecuenciaSOS = sizeof(secuenciaSOS) / sizeof(secuenciaSOS[0]);
+
+int secuenciaBLINK[] = {1, 1, 1, 1, 1, 1, 1, 0};   
+const int longitudSecuenciaBLINK = sizeof(secuenciaBLINK) / sizeof(secuenciaBLINK[0]);
+
+void manejarSOS() {
+  nuevaInterrupcion = 3; 
+}
+
+void manejarBlink() {
+  nuevaInterrupcion = 2; 
+}
+
+void manejarPulso() {
+  nuevaInterrupcion = 1; 
+}
+
+void manejarPausa() {
+  nuevaInterrupcion = 4; 
+}
+
+void colorearRGB(int red, int green, int blue) {
+  LED_RGB.setPixelColor(0, (uint32_t(LED_RGB.Color(red, green, blue))));
+  LED_RGB.show();
+}
+
+void inicializarEfecto(int nuevoEfecto) {
+  digitalWrite(LED_PIN, LOW);
+  colorearRGB(0, 0, 0);   
+  
+  tiempoUltimoCambio = millis();
+  estadoLuz = 0; 
+  pasoActual = 0; 
+  
+    if (efectoActual != 0 && efectoActual == efectoPrevio) {
+        efectoPrevio = 0;
+        interrupcionOcurrida = false;
+    }
+  
+  efectoActual = nuevoEfecto;
+}
+
+void manejarParpadeo(int duracionEncendido, int r, int g, int b) {
+  
+  if (estadoLuz == 1) { 
+    if (millis() - tiempoUltimoCambio >= duracionEncendido) {
+      digitalWrite(LED_PIN, LOW);
+      colorearRGB(0, 0, 0);   
+      tiempoUltimoCambio = millis();
+      estadoLuz = 2; 
+    }
+  } 
+  else if (estadoLuz == 2) { 
+    if (millis() - tiempoUltimoCambio >= 100) { 
+      estadoLuz = 0; 
+    }
+  }
+  else if (estadoLuz == 0) { 
+    digitalWrite(LED_PIN, HIGH);
+    colorearRGB(r, g, b);   
+    tiempoUltimoCambio = millis();
+    estadoLuz = 1; 
+  }
+}
+
+void procesarNuevaInterrupcion() {
+  
+  if (nuevaInterrupcion == 0) return; 
+
+  if (millis() - tiempoPrevioBoton < retardoDebounce) {
+    nuevaInterrupcion = 0; 
+    return;
+  }
+
+  tiempoPrevioBoton = millis();
+
+  int interrupcion = nuevaInterrupcion; 
+  nuevaInterrupcion = 0; 
+
+  if (interrupcion == 4) { 
+    estaPausado = !estaPausado; 
+
+    if (!estaPausado) {
+      if (interrupcionOcurrida) {
+        efectoActual = efectoPrevio; 
+        pasoActual = pasoPrevio;
+        estadoLuz = estadoLuzPrevia;
+        
+        efectoPrevio = 0;
+        interrupcionOcurrida = false; 
+      } 
+      
+      tiempoUltimoCambio = millis(); 
+    }
+    return;
+  }
+
+  if (efectoActual != 0 && efectoActual != interrupcion) {
+    
+    efectoPrevio = efectoActual;
+    pasoPrevio = pasoActual;
+    estadoLuzPrevia = estadoLuz;
+    interrupcionOcurrida = true; 
+
+  } else {
+    interrupcionOcurrida = false; 
+    efectoPrevio = 0;
+  }
+
+  efectoActual = interrupcion; 
+  pasoActual = 0; 
+  estadoLuz = 0;
+  estaPausado = false; 
+}
+
+
+void setup() {
+  LED_RGB.begin();
+  LED_RGB.setBrightness(150);
+  colorearRGB(0,0,0);
+  randomSeed(analogRead(0)); 
+  
+  pinMode(LED_PIN, OUTPUT);
+
+  pinMode(BTN_SOS_PIN, INPUT_PULLUP);
+  pinMode(BTN_BLINK_PIN, INPUT_PULLUP);
+  pinMode(BTN_PULSO_PIN, INPUT_PULLUP);
+  pinMode(BTN_PAUSE_PIN, INPUT_PULLUP); 
+
+  attachInterrupt(digitalPinToInterrupt(BTN_SOS_PIN), manejarSOS, FALLING); 
+  attachInterrupt(digitalPinToInterrupt(BTN_BLINK_PIN), manejarBlink, FALLING); 
+  attachInterrupt(digitalPinToInterrupt(BTN_PULSO_PIN), manejarPulso, FALLING); 
+  attachInterrupt(digitalPinToInterrupt(BTN_PAUSE_PIN), manejarPausa, FALLING); 
+
+  digitalWrite(LED_PIN, LOW);
+}
+
+void loop() {
+  
+  procesarNuevaInterrupcion();
+
+  if (estaPausado) {
+    return;
+  }
+  
+  if (efectoActual == 1) {
+    
+    const int duracionPaso = 5; 
+
+    if (millis() - tiempoUltimoCambio < duracionPaso) {
+      return; 
+    }
+    tiempoUltimoCambio = millis(); 
+
+    int r = 0; 
+    int g = 0; 
+    int b = 0;
+    
+    if (estadoLuz == 0 || estadoLuz == 1) {
+      estadoLuz = 1; 
+      r = 0; g = 0; b = 255; 
+      pasoActual++; 
+
+      if (pasoActual > 255) {
+        pasoActual = 255; 
+        estadoLuz = 2; 
+      }
+    }
+    else if (estadoLuz == 2) {
+      r = 0; g = 255; b = 0; 
+      pasoActual--; 
+
+      if (pasoActual < 0) {
+        inicializarEfecto(0); 
+        return;
+      }
+    }
+    
+    int brilloActual = pasoActual;
+    
+    analogWrite(LED_PIN, brilloActual); 
+    
+    LED_RGB.setPixelColor(0, LED_RGB.Color(r, g, b));
+    LED_RGB.setBrightness(brilloActual); 
+    LED_RGB.show();
+
+  } 
+  
+  else if (efectoActual == 2) {
+    const int duracionCorta = 200;  
+    
+    if (estadoLuz == 0) {
+      if (pasoActual >= longitudSecuenciaBLINK || secuenciaBLINK[pasoActual] == 0) {
+        inicializarEfecto(0);
+        return;
+      }
+      
+      pasoActual++; 
+    }
+    
+    manejarParpadeo(duracionCorta, random(0, 256), random(0, 256), random(0, 256));
+  }
+  
+  else if (efectoActual == 3) {
+    const int duracionCorta = 200;
+    const int duracionLarga = 400;
+    int duracionSiguiente;
+    
+    if (estadoLuz == 0) {
+      if (pasoActual >= longitudSecuenciaSOS || secuenciaSOS[pasoActual][0] == 0) {
+        inicializarEfecto(0); 
+        return;
+      }
+      
+      pasoActual++; 
+    }
+
+    int indiceActual = pasoActual;
+
+    int tipoPulso = secuenciaSOS[indiceActual][0];
+    int r = secuenciaSOS[indiceActual][1];
+    int g = secuenciaSOS[indiceActual][2];
+    int b = secuenciaSOS[indiceActual][3];
+
+    if (tipoPulso == 1) { 
+      duracionSiguiente = duracionCorta;
+    } else { 
+      duracionSiguiente = duracionLarga;
+    }
+
+    manejarParpadeo(duracionSiguiente, r, g, b);
+  }
+  
+  else {
+    digitalWrite(LED_PIN, LOW);
+    colorearRGB(0, 0, 0);
+  }
+}
